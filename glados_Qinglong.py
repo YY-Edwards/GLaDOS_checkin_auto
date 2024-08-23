@@ -9,6 +9,9 @@ if cookies[0] == "":
     print('未获取到COOKIE变量') 
     cookies = []
     exit(0)
+else:
+    print("checking cookies:")
+    print(cookies[0])
 
 
 def start():    
