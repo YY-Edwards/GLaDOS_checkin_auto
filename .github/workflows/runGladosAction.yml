@@ -1,31 +1,47 @@
 name: 开始每日签到
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 手动触发
   schedule:
     # UTC 1点30分(北京时间 9点30分)
-    - cron: 30 1 * * *
-  # 标星时触发工作流程
+    - cron: "30 1 * * *"
   watch:
-    types: [started]
+    types: [started] # 标星触发
+
+# 给 keepalive 提供必须的权限
+permissions:
+  actions: write
 
 jobs:
-  build:
+  sign_in:
+    name: 签到任务
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Python 3.9
         uses: actions/setup-python@v3
         with:
           python-version: 3.9
+
       - name: Install requirements
         run: |
           python -m pip install --upgrade pip
           pip install requests
+
       - name: Run checkin
-        run: |
-          python3 glados_Qinglong.py
-        env: 
-          GLADOS_COOKIE: "${{ secrets.GLADOS_COOKIE }}"
+        run: python3 glados_Qinglong.py
+        env:
+          GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-      - uses: gautamkrishnar/keepalive-workflow@master  
+
+  keepalive:
+    name: 保持活跃
+    runs-on: ubuntu-latest
+    needs: sign_in   # 等签到任务跑完再执行
+    steps:
+      - uses: actions/checkout@v3
+      - uses: gautamkrishnar/keepalive-workflow@v2
+        with:
+          use_api: true       # 使用 API 模式，不产生空提交
+          time_elapsed: 45    # 默认45天，如果超过45天没活动就触发保持活跃逻辑
