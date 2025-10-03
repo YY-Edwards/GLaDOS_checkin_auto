@@ -39,12 +39,10 @@ jobs:
 
   keepalive:
     name: 保持活跃
-    runs-on: ubuntu-latest
+    if: ${{ always() }}
     needs: sign_in   # 等签到任务跑完再执行
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write
     steps:
       - uses: liskin/gh-workflow-keepalive@v1
-        with:
-          use_api: true       # 使用 API 模式，不产生空提交
-          time_elapsed: 45    # 默认45天，如果超过45天没活动就触发保持活跃逻辑
