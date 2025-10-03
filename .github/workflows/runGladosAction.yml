@@ -32,7 +32,7 @@ jobs:
       - name: Run checkin
         run: python3 glados_Qinglong.py
         env:
-          GLADOS_COOKIE: ${{ secrets.GLADOS_COOKIE }}
+          GLADOS_COOKIE: "${{ secrets.GLADOS_COOKIE }}"
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
 
   keepalive:
