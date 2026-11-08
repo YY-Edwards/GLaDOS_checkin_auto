@@ -1,49 +1,133 @@
-import requests,json,os
+import requests
+import json
+import os
 
-# pushplus秘钥
+
+# ================= 配置区 =================
+# PushPlus 推送密钥（可选，为空则不推送）
 sckey = os.environ.get("PUSHPLUS_TOKEN", "")
-sendContent = ''
-# glados账号cookie
-cookies= os.environ.get("GLADOS_COOKIE", []).split("&")
-if cookies[0] == "":
-    print('未获取到COOKIE变量') 
-    cookies = []
-    exit(0)
-else:
-    print("checking cookies:")
-    print(cookies[0])
+
+# GLaDOS Cookie，多个账号用 & 分隔
+cookies_raw = os.environ.get("GLADOS_COOKIE", "")
+cookies = cookies_raw.split("&") if cookies_raw else []
+
+# User-Agent：务必与获取 Cookie 的浏览器一致
+useragent = os.environ.get(
+    "GLADOS_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+)
+
+# GLaDOS 2026 年新 API
+BASE_URL = "https://glados.cloud"
+URL_CHECKIN = f"{BASE_URL}/api/user/checkin"
+URL_STATUS = f"{BASE_URL}/api/user/status"
+REFERER = f"{BASE_URL}/console/checkin"
+ORIGIN = BASE_URL
+
+# 签到 token（新 API 使用 glados.cloud）
+PAYLOAD = {"token": "glados.cloud"}
+# =========================================
 
 
-def start():    
-    url= "https://glados.cloud/api/user/checkin"
-    url2= "https://glados.cloud/api/user/status"
-    referer = 'https://glados.cloud/console/checkin'
-    origin = "https://glados.cloud"
-    useragent = os.environ.get("GLADOS_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
-    payload={
-        'token': 'glados.cloud'
+def send_push(title, content):
+    """发送 PushPlus 通知，失败不影响主流程"""
+    if not sckey:
+        return
+    try:
+        requests.get(
+            "http://www.pushplus.plus/send",
+            params={"token": sckey, "title": title, "content": content},
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[警告] PushPlus 推送失败: {e}")
+
+
+def checkin_one(cookie, index):
+    """对单个账号执行签到，返回结果字符串"""
+    headers = {
+        "cookie": cookie,
+        "referer": REFERER,
+        "origin": ORIGIN,
+        "user-agent": useragent,
+        "content-type": "application/json;charset=UTF-8",
     }
-    for cookie in cookies:
-        checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
-        state =  requests.get(url2,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent})
-    #--------------------------------------------------------------------------------------------------------#  
-        time = state.json()['data']['leftDays']
-        time = time.split('.')[0]
-        email = state.json()['data']['email']
-        if 'message' in checkin.text:
-            mess = checkin.json()['message']
-            print(email+'----'+mess+'----剩余('+time+')天')  # 日志输出
-            global sendContent
-            sendContent += email+'----'+mess+'----剩余('+time+')天\n'
-        else:
-            requests.get('http://www.pushplus.plus/send?token=' + sckey + '&content='+email+'更新cookie')
-     #--------------------------------------------------------------------------------------------------------#   
-    if sckey != "":
-        requests.get('http://www.pushplus.plus/send?token=' + sckey + '&title=VPN签到成功'+'&content='+sendContent)
+
+    # 1. 执行签到
+    try:
+        checkin_resp = requests.post(
+            URL_CHECKIN,
+            headers=headers,
+            data=json.dumps(PAYLOAD),
+            timeout=20,
+        )
+        checkin_json = checkin_resp.json()
+    except Exception as e:
+        return f"账号{index}: 签到请求异常: {e}"
+
+    # 2. 查询状态
+    try:
+        state_resp = requests.get(URL_STATUS, headers=headers, timeout=20)
+        state_json = state_resp.json()
+    except Exception as e:
+        return f"账号{index}: 状态查询异常: {e}"
+
+    # 3. 校验返回数据，避免 KeyError
+    if "data" not in state_json:
+        return (
+            f"账号{index}: 状态获取失败，服务器返回: {state_json}。"
+            f"请检查 Cookie 是否失效，以及 User-Agent 是否与登录浏览器一致"
+        )
+
+    try:
+        time_left = str(state_json["data"]["leftDays"]).split(".")[0]
+        email = state_json["data"]["email"]
+    except (KeyError, TypeError) as e:
+        return f"账号{index}: 解析状态数据失败: {e}, 原始数据: {state_json}"
+
+    # 4. 解析签到结果
+    mess = checkin_json.get("message", "")
+    if mess in ("Checkin!", "Repeats"):
+        return f"{email}----{mess}----剩余({time_left})天"
+    else:
+        return (
+            f"账号{index}({email}): 签到返回异常: {checkin_json} "
+            f"----剩余({time_left})天"
+        )
+
+
+def start():
+    if not cookies or cookies[0] == "":
+        print("未获取到 COOKIE 变量，退出")
+        return
+
+    print(f"共检测到 {len(cookies)} 个账号")
+    print("checking cookies:")
+    for i, c in enumerate(cookies, 1):
+        # 只打印前后片段，避免完整泄露
+        snippet = c[:20] + "..." + c[-10:] if len(c) > 30 else c
+        print(f"  [{i}] {snippet}")
+
+    results = []
+    for i, cookie in enumerate(cookies, 1):
+        if not cookie.strip():
+            continue
+        print(f"--- 处理第 {i} 个账号 ---")
+        result = checkin_one(cookie.strip(), i)
+        print(result)
+        results.append(result)
+
+    sendContent = "\n".join(results)
+
+    if sckey and sendContent:
+        send_push("GLaDOS 签到结果", sendContent)
 
 
 def main_handler(event, context):
-  return start()
+    """腾讯云函数 / 其他云函数入口"""
+    return start()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     start()
