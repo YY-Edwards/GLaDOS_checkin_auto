@@ -73,7 +73,7 @@ def checkin_one(cookie, index):
     except Exception as e:
         return f"账号{index}: 状态查询异常: {e}"
 
-    # 3. 校验返回数据，避免 KeyError
+    # 3. 校验返回数据
     if "data" not in state_json:
         return (
             f"账号{index}: 状态获取失败，服务器返回: {state_json}。"
@@ -86,16 +86,20 @@ def checkin_one(cookie, index):
     except (KeyError, TypeError) as e:
         return f"账号{index}: 解析状态数据失败: {e}, 原始数据: {state_json}"
 
-    # 4. 解析签到结果
+    # 4. 解析签到结果（适配新版 API）
+    # 新版成功返回如："Checkin! Got 1 Points"，或者重复签到可能是 "Repeats" 等
     mess = checkin_json.get("message", "")
-    if mess in ("Checkin!", "Repeats"):
+    code = checkin_json.get("code", -1)
+    
+    # 只要 code 为 0（成功），或者 message 包含 Checkin/Repeats，都视为成功
+    if code == 0 or "Checkin" in mess or "Repeats" in mess:
+        # 如果是今天已经签过了，提示一下
+        if "Repeats" in mess or checkin_json.get("repeated"):
+            return f"{email}----今日已签到----剩余({time_left})天"
         return f"{email}----{mess}----剩余({time_left})天"
     else:
-        return (
-            f"账号{index}({email}): 签到返回异常: {checkin_json} "
-            f"----剩余({time_left})天"
-        )
-
+        # 真正的失败，只打印 code 和 message，不打印超长的 list 账单
+        return f"账号{index}({email}): 签到失败 [{code}] {mess} ----剩余({time_left})天"
 
 def start():
     if not cookies or cookies[0] == "":
