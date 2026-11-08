@@ -19,9 +19,9 @@ def start():
     url2= "https://glados.cloud/api/user/status"
     referer = 'https://glados.cloud/console/checkin'
     origin = "https://glados.cloud"
-    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
+    useragent = os.environ.get("GLADOS_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
     payload={
-        'token': 'glados.one'
+        'token': 'glados.cloud'
     }
     for cookie in cookies:
         checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
